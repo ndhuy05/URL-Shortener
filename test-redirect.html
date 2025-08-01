@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test URL Shortener Redirect</title>
+</head>
+<body>
+    <h1>URL Shortener Redirect Test</h1>
+    
+    <div>
+        <h2>Step 1: Create a Short URL</h2>
+        <p>1. Go to <a href="http://localhost:3000" target="_blank">http://localhost:3000</a></p>
+        <p>2. Login/Register and create a short URL</p>
+        <p>3. Copy the generated short URL (e.g. http://localhost:5002/abc123)</p>
+    </div>
+    
+    <div>
+        <h2>Step 2: Test Direct API Call</h2>
+        <button onclick="testRedirect()">Test Redirect API</button>
+        <div id="result"></div>
+    </div>
+    
+    <div>
+        <h2>Step 3: Manual Test Links</h2>
+        <p>Try these example links (replace with your actual short codes):</p>
+        <ul>
+            <li><a href="http://localhost:5002/abc123" target="_blank">http://localhost:5002/abc123</a></li>
+            <li><a href="http://localhost:5002/def456" target="_blank">http://localhost:5002/def456</a></li>
+        </ul>
+    </div>
+
+    <script>
+        async function testRedirect() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                // Test if the API is running
+                const response = await fetch('http://localhost:5002/api/url', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = '<p style="color: green;">✅ Shorten API is running on http://localhost:5002</p>';
+                } else {
+                    resultDiv.innerHTML = '<p style="color: red;">❌ Shorten API not responding</p>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p style="color: red;">❌ Error: ${error.message}</p><p>Make sure services are running with start-services.bat</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
