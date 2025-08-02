@@ -1,59 +1,39 @@
-const USERS_API_URL = 'http://localhost:5001/api';
+import { api } from './api.js';
 
 export const authService = {
   async login(credentials) {
-    const response = await fetch(`${USERS_API_URL}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(credentials),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Login failed');
+    try {
+      const response = await api.post('/api/users/auth/login', credentials);
+      const data = response.data;
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data));
+      return data;
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || 'Login failed';
+      throw new Error(errorMessage);
     }
-
-    const data = await response.json();
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('user', JSON.stringify(data));
-    return data;
   },
 
   async register(userData) {
-    const response = await fetch(`${USERS_API_URL}/auth/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(userData),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Registration failed');
+    try {
+      const response = await api.post('/api/users/auth/register', userData);
+      const data = response.data;
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data));
+      return data;
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || 'Registration failed';
+      throw new Error(errorMessage);
     }
-
-    const data = await response.json();
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('user', JSON.stringify(data));
-    return data;
   },
 
   async getProfile() {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${USERS_API_URL}/auth/profile`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
+    try {
+      const response = await api.get('/api/users/auth/profile');
+      return response.data;
+    } catch (error) {
       throw new Error('Failed to get profile');
     }
-
-    return response.json();
   },
 
   logout() {

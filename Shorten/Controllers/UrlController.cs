@@ -28,6 +28,7 @@ public class UrlController : ControllerBase
     }
 
     [HttpPost("shorten")]
+    [Authorize]
     public async Task<IActionResult> ShortenUrl([FromBody] CreateUrlDto createUrlDto)
     {
         if (!ModelState.IsValid)
@@ -40,8 +41,10 @@ public class UrlController : ControllerBase
         // Ensure URL has proper scheme
         var normalizedUrl = _urlShortenerService.EnsureUrlHasScheme(createUrlDto.OriginalUrl);
 
-        // Get user ID if authenticated
+        // Get user ID (required since method is now authorized)
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null)
+            return Unauthorized();
 
         // Generate or use custom short code
         string shortCode;
