@@ -5,6 +5,7 @@ using Shorten.Data;
 namespace Shorten.Controllers;
 
 [ApiController]
+[Route("")]
 public class RedirectController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
@@ -14,26 +15,22 @@ public class RedirectController : ControllerBase
         _context = context;
     }
 
+    // API đơn giản để redirect đến URL gốc
     [HttpGet("{shortCode}")]
     public async Task<IActionResult> RedirectToOriginal(string shortCode)
     {
+        // Tìm URL trong database
         var shortenedUrl = await _context.ShortenedUrls
-            .FirstOrDefaultAsync(u => u.ShortCode == shortCode && u.IsActive);
+            .FirstOrDefaultAsync(u => u.ShortCode == shortCode);
 
         if (shortenedUrl == null)
-            return NotFound("Short URL not found");
+            return NotFound("URL không tồn tại");
 
-        // Check if expired
-        if (shortenedUrl.ExpiresAt.HasValue && shortenedUrl.ExpiresAt < DateTime.UtcNow)
-        {
-            return BadRequest("Short URL has expired");
-        }
-
-        // Update click count and last accessed
+        // Tăng số lượt click
         shortenedUrl.ClickCount++;
-        shortenedUrl.LastAccessedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
+        // Redirect đến URL gốc
         return Redirect(shortenedUrl.OriginalUrl);
     }
 }

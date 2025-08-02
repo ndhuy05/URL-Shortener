@@ -1,8 +1,6 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Users.Models;
-using Users.Models.DTOs;
 using Users.Services;
 
 namespace Users.Controllers;
@@ -25,109 +23,88 @@ public class AuthController : ControllerBase
         _tokenService = tokenService;
     }
 
+    // API đơn giản để đăng ký - dùng class đơn giản
     [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] RegisterDto registerDto)
+    public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        var user = new ApplicationUser
+        try
         {
-            UserName = registerDto.Email,
-            Email = registerDto.Email,
-            FirstName = registerDto.FirstName,
-            LastName = registerDto.LastName,
-            CreatedAt = DateTime.UtcNow
-        };
+            // Kiểm tra dữ liệu đầu vào
+            if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
+                return BadRequest("Email và mật khẩu không được để trống");
 
-        var result = await _userManager.CreateAsync(user, registerDto.Password);
+            // Kiểm tra user đã tồn tại chưa
+            var existingUser = await _userManager.FindByEmailAsync(request.Email);
+            if (existingUser != null)
+                return BadRequest("Email này đã được sử dụng");
 
-        if (!result.Succeeded)
-        {
-            foreach (var error in result.Errors)
+            // Tạo user mới
+            var user = new ApplicationUser
             {
-                ModelState.AddModelError(string.Empty, error.Description);
-            }
-            return BadRequest(ModelState);
+                UserName = request.Email,
+                Email = request.Email,
+                FirstName = "",
+                LastName = "",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var result = await _userManager.CreateAsync(user, request.Password);
+            if (!result.Succeeded)
+                return BadRequest("Không thể tạo tài khoản");
+
+            // Tạo token
+            var token = _tokenService.GenerateToken(user);
+
+            return Ok(new
+            {
+                token = token,
+                userId = user.Id,
+                email = user.Email,
+                firstName = user.FirstName,
+                lastName = user.LastName
+            });
         }
-
-        var token = _tokenService.GenerateToken(user);
-        var response = new AuthResponseDto
+        catch (Exception ex)
         {
-            Token = token,
-            UserId = user.Id,
-            Email = user.Email,
-            FirstName = user.FirstName,
-            LastName = user.LastName,
-            Expiration = DateTime.UtcNow.AddHours(24)
-        };
-
-        return Ok(response);
+            return BadRequest($"Lỗi: {ex.Message}");
+        }
     }
 
+    // API đơn giản để đăng nhập - dùng class đơn giản
     [HttpPost("login")]
-    public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
+    public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        var user = await _userManager.FindByEmailAsync(loginDto.Email);
-        if (user == null)
-            return Unauthorized("Invalid email or password");
-
-        var result = await _signInManager.CheckPasswordSignInAsync(user, loginDto.Password, false);
-        if (!result.Succeeded)
-            return Unauthorized("Invalid email or password");
-
-        // Update last login
-        user.LastLoginAt = DateTime.UtcNow;
-        await _userManager.UpdateAsync(user);
-
-        var token = _tokenService.GenerateToken(user);
-        var response = new AuthResponseDto
+        try
         {
-            Token = token,
-            UserId = user.Id,
-            Email = user.Email,
-            FirstName = user.FirstName,
-            LastName = user.LastName,
-            Expiration = DateTime.UtcNow.AddHours(24)
-        };
+            // Kiểm tra dữ liệu đầu vào
+            if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
+                return BadRequest("Email và mật khẩu không được để trống");
 
-        return Ok(response);
-    }
+            // Tìm user
+            var user = await _userManager.FindByEmailAsync(request.Email);
+            if (user == null)
+                return BadRequest("Email hoặc mật khẩu không đúng");
 
-    [HttpGet("profile")]
-    [Authorize]
-    public async Task<IActionResult> GetProfile()
-    {
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (userId == null)
-            return Unauthorized();
+            // Kiểm tra mật khẩu
+            var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, false);
+            if (!result.Succeeded)
+                return BadRequest("Email hoặc mật khẩu không đúng");
 
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user == null)
-            return NotFound();
+            // Tạo token
+            var token = _tokenService.GenerateToken(user);
 
-        var profile = new UserProfileDto
+            return Ok(new
+            {
+                token = token,
+                userId = user.Id,
+                email = user.Email,
+                firstName = user.FirstName,
+                lastName = user.LastName
+            });
+        }
+        catch (Exception ex)
         {
-            Id = user.Id,
-            Email = user.Email!,
-            FirstName = user.FirstName,
-            LastName = user.LastName,
-            CreatedAt = user.CreatedAt,
-            LastLoginAt = user.LastLoginAt,
-            IsActive = user.IsActive
-        };
-
-        return Ok(profile);
-    }
-
-    [HttpPost("logout")]
-    [Authorize]
-    public async Task<IActionResult> Logout()
-    {
-        await _signInManager.SignOutAsync();
-        return Ok(new { message = "Logged out successfully" });
+            return BadRequest($"Lỗi: {ex.Message}");
+        }
     }
 }

@@ -43,12 +43,4 @@ export const urlService = {
       throw new Error('Failed to delete URL');
     }
   },
-
-  async toggleUrlStatus(id) {
-    try {
-      await api.put(`/api/urls/${id}/toggle`);
-    } catch (error) {
-      throw new Error('Failed to toggle URL status');
-    }
-  },
 };

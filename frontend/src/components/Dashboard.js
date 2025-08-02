@@ -11,7 +11,6 @@ import {
   Card,
   CardContent,
   IconButton,
-  Chip,
   AppBar,
   Toolbar,
   Menu,
@@ -20,8 +19,6 @@ import {
 import {
   ContentCopy,
   Delete,
-  ToggleOff,
-  ToggleOn,
   AccountCircle,
   Logout,
 } from '@mui/icons-material';
@@ -96,18 +93,6 @@ const Dashboard = () => {
       setSuccess('URL deleted successfully!');
     } catch (err) {
       setError('Failed to delete URL');
-    }
-  };
-
-  const handleToggle = async (id) => {
-    try {
-      await urlService.toggleUrlStatus(id);
-      setUrls(urls.map(url => 
-        url.id === id ? { ...url, isActive: !url.isActive } : url
-      ));
-      setSuccess('URL status updated!');
-    } catch (err) {
-      setError('Failed to update URL status');
     }
   };
 
@@ -213,11 +198,6 @@ const Dashboard = () => {
                     <Typography variant="h6" component="div" noWrap sx={{ flexGrow: 1, mr: 1 }}>
                       {url.shortCode}
                     </Typography>
-                    <Chip
-                      label={url.isActive ? 'Active' : 'Inactive'}
-                      color={url.isActive ? 'success' : 'default'}
-                      size="small"
-                    />
                   </Box>
                   
                   <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -243,13 +223,6 @@ const Dashboard = () => {
                       title="Copy URL"
                     >
                       <ContentCopy />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleToggle(url.id)}
-                      title={url.isActive ? 'Deactivate' : 'Activate'}
-                    >
-                      {url.isActive ? <ToggleOn /> : <ToggleOff />}
                     </IconButton>
                     <IconButton
                       size="small"

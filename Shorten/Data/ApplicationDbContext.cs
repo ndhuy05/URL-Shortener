@@ -15,6 +15,7 @@ public class ApplicationDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        // Cấu hình đơn giản cho ShortenedUrl
         modelBuilder.Entity<ShortenedUrl>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -23,7 +24,6 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.ShortCode).IsUnique();
             entity.Property(e => e.UserId).HasMaxLength(450);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
-            entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.ClickCount).HasDefaultValue(0);
         });
     }

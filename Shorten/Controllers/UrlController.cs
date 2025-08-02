@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shorten.Data;
 using Shorten.Models;
-using Shorten.Models.DTOs;
 using Shorten.Services;
 using System.Security.Claims;
 
@@ -15,162 +14,103 @@ public class UrlController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IUrlShortenerService _urlShortenerService;
-    private readonly IConfiguration _configuration;
 
-    public UrlController(
-        ApplicationDbContext context,
-        IUrlShortenerService urlShortenerService,
-        IConfiguration configuration)
+    public UrlController(ApplicationDbContext context, IUrlShortenerService urlShortenerService)
     {
         _context = context;
         _urlShortenerService = urlShortenerService;
-        _configuration = configuration;
     }
 
+    // API đơn giản để rút gọn URL - không cần đăng nhập (cho sinh viên)
     [HttpPost("shorten")]
-    [Authorize]
-    public async Task<IActionResult> ShortenUrl([FromBody] CreateUrlDto createUrlDto)
+    public async Task<IActionResult> ShortenUrl([FromBody] UrlRequest request)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        // Validate URL
-        if (!_urlShortenerService.IsValidUrl(createUrlDto.OriginalUrl))
-            return BadRequest(new { error = "Invalid URL provided" });
-
-        // Ensure URL has proper scheme
-        var normalizedUrl = _urlShortenerService.EnsureUrlHasScheme(createUrlDto.OriginalUrl);
-
-        // Get user ID (required since method is now authorized)
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userId == null)
-            return Unauthorized();
-
-        // Generate or use custom short code
-        string shortCode;
-        if (!string.IsNullOrEmpty(createUrlDto.CustomCode))
+        try
         {
-            // Validate custom code
-            if (createUrlDto.CustomCode.Length < 3 || createUrlDto.CustomCode.Length > 10)
-                return BadRequest(new { error = "Custom code must be between 3 and 10 characters" });
+            // Kiểm tra URL có hợp lệ không
+            if (string.IsNullOrEmpty(request.OriginalUrl))
+                return BadRequest("URL không được để trống");
 
-            if (await _context.ShortenedUrls.AnyAsync(u => u.ShortCode == createUrlDto.CustomCode))
-                return BadRequest(new { error = "Custom code existed" });
+            // Lấy user ID (có thể null nếu không đăng nhập)
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-            shortCode = createUrlDto.CustomCode;
-        }
-        else
-        {
-            // Generate unique short code
-            do
+            // Tạo mã ngắn
+            string shortCode;
+            if (!string.IsNullOrEmpty(request.CustomCode))
             {
-                shortCode = _urlShortenerService.GenerateShortCode();
-            } while (await _context.ShortenedUrls.AnyAsync(u => u.ShortCode == shortCode));
+                // Kiểm tra mã tùy chỉnh đã tồn tại chưa
+                if (await _context.ShortenedUrls.AnyAsync(u => u.ShortCode == request.CustomCode))
+                    return BadRequest("Mã tùy chỉnh này đã tồn tại");
+                shortCode = request.CustomCode;
+            }
+            else
+            {
+                // Tạo mã ngắn tự động
+                do
+                {
+                    shortCode = _urlShortenerService.GenerateShortCode();
+                } while (await _context.ShortenedUrls.AnyAsync(u => u.ShortCode == shortCode));
+            }
+
+            // Tạo URL rút gọn mới
+            var shortenedUrl = new ShortenedUrl
+            {
+                OriginalUrl = request.OriginalUrl,
+                ShortCode = shortCode,
+                UserId = userId,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.ShortenedUrls.Add(shortenedUrl);
+            await _context.SaveChangesAsync();
+
+            // Trả về kết quả
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            return Ok(new
+            {
+                id = shortenedUrl.Id,
+                originalUrl = shortenedUrl.OriginalUrl,
+                shortCode = shortenedUrl.ShortCode,
+                shortUrl = $"{baseUrl}/{shortenedUrl.ShortCode}",
+                createdAt = shortenedUrl.CreatedAt,
+                clickCount = shortenedUrl.ClickCount
+            });
         }
-
-        var shortenedUrl = new ShortenedUrl
+        catch (Exception ex)
         {
-            OriginalUrl = normalizedUrl,
-            ShortCode = shortCode,
-            UserId = userId,
-            CreatedAt = DateTime.UtcNow,
-            ExpiresAt = createUrlDto.ExpiresAt
-        };
-
-        _context.ShortenedUrls.Add(shortenedUrl);
-        await _context.SaveChangesAsync();
-
-        var baseUrl = $"{Request.Scheme}://{Request.Host}";
-        var response = new UrlResponseDto
-        {
-            Id = shortenedUrl.Id,
-            OriginalUrl = shortenedUrl.OriginalUrl,
-            ShortCode = shortenedUrl.ShortCode,
-            ShortUrl = $"{baseUrl}/{shortenedUrl.ShortCode}",
-            CreatedAt = shortenedUrl.CreatedAt,
-            ClickCount = shortenedUrl.ClickCount,
-            LastAccessedAt = shortenedUrl.LastAccessedAt,
-            IsActive = shortenedUrl.IsActive,
-            ExpiresAt = shortenedUrl.ExpiresAt
-        };
-
-        return Ok(response);
+            return BadRequest($"Lỗi: {ex.Message}");
+        }
     }
 
-    [HttpGet("stats/{shortCode}")]
-    public async Task<IActionResult> GetUrlStats(string shortCode)
-    {
-        var shortenedUrl = await _context.ShortenedUrls
-            .FirstOrDefaultAsync(u => u.ShortCode == shortCode);
-
-        if (shortenedUrl == null)
-            return NotFound("Short URL not found");
-
-        // Check if user owns this URL (if authenticated)
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (shortenedUrl.UserId != null && shortenedUrl.UserId != userId)
-            return Forbid("You can only view stats for your own URLs");
-
-        var baseUrl = $"{Request.Scheme}://{Request.Host}";
-        var stats = new UrlStatsDto
-        {
-            Id = shortenedUrl.Id,
-            OriginalUrl = shortenedUrl.OriginalUrl,
-            ShortCode = shortenedUrl.ShortCode,
-            ShortUrl = $"{baseUrl}/{shortenedUrl.ShortCode}",
-            CreatedAt = shortenedUrl.CreatedAt,
-            ClickCount = shortenedUrl.ClickCount,
-            LastAccessedAt = shortenedUrl.LastAccessedAt,
-            IsActive = shortenedUrl.IsActive,
-            ExpiresAt = shortenedUrl.ExpiresAt
-        };
-
-        return Ok(stats);
-    }
-
+    // API đơn giản để lấy danh sách URL của user - không dùng DTO
     [HttpGet("my-urls")]
     [Authorize]
-    public async Task<IActionResult> GetMyUrls([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    public async Task<IActionResult> GetMyUrls()
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (userId == null)
             return Unauthorized();
 
-        var query = _context.ShortenedUrls
+        var urls = await _context.ShortenedUrls
             .Where(u => u.UserId == userId)
-            .OrderByDescending(u => u.CreatedAt);
-
-        var totalCount = await query.CountAsync();
-        var urls = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .OrderByDescending(u => u.CreatedAt)
             .ToListAsync();
 
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
-        var urlDtos = urls.Select(u => new UrlResponseDto
+        var response = urls.Select(u => new
         {
-            Id = u.Id,
-            OriginalUrl = u.OriginalUrl,
-            ShortCode = u.ShortCode,
-            ShortUrl = $"{baseUrl}/{u.ShortCode}",
-            CreatedAt = u.CreatedAt,
-            ClickCount = u.ClickCount,
-            LastAccessedAt = u.LastAccessedAt,
-            IsActive = u.IsActive,
-            ExpiresAt = u.ExpiresAt
+            id = u.Id,
+            originalUrl = u.OriginalUrl,
+            shortCode = u.ShortCode,
+            shortUrl = $"{baseUrl}/{u.ShortCode}",
+            createdAt = u.CreatedAt,
+            clickCount = u.ClickCount
         }).ToList();
 
-        var response = new BulkUrlsResponseDto
-        {
-            Urls = urlDtos,
-            TotalCount = totalCount,
-            Page = page,
-            PageSize = pageSize
-        };
-
-        return Ok(response);
+        return Ok(new { urls = response });
     }
 
+    // API đơn giản để xóa URL
     [HttpDelete("{id}")]
     [Authorize]
     public async Task<IActionResult> DeleteUrl(int id)
@@ -179,35 +119,15 @@ public class UrlController : ControllerBase
         if (userId == null)
             return Unauthorized();
 
-        var shortenedUrl = await _context.ShortenedUrls
+        var url = await _context.ShortenedUrls
             .FirstOrDefaultAsync(u => u.Id == id && u.UserId == userId);
 
-        if (shortenedUrl == null)
-            return NotFound("URL not found or you don't have permission to delete it");
+        if (url == null)
+            return NotFound("Không tìm thấy URL");
 
-        _context.ShortenedUrls.Remove(shortenedUrl);
+        _context.ShortenedUrls.Remove(url);
         await _context.SaveChangesAsync();
 
-        return Ok(new { message = "URL deleted successfully" });
-    }
-
-    [HttpPut("{id}/toggle")]
-    [Authorize]
-    public async Task<IActionResult> ToggleUrlStatus(int id)
-    {
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (userId == null)
-            return Unauthorized();
-
-        var shortenedUrl = await _context.ShortenedUrls
-            .FirstOrDefaultAsync(u => u.Id == id && u.UserId == userId);
-
-        if (shortenedUrl == null)
-            return NotFound("URL not found or you don't have permission to modify it");
-
-        shortenedUrl.IsActive = !shortenedUrl.IsActive;
-        await _context.SaveChangesAsync();
-
-        return Ok(new { message = $"URL {(shortenedUrl.IsActive ? "activated" : "deactivated")} successfully", isActive = shortenedUrl.IsActive });
+        return Ok("Xóa thành công");
     }
 }

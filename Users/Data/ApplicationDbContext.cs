@@ -14,12 +14,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     {
         base.OnModelCreating(builder);
 
+        // Cấu hình đơn giản cho ApplicationUser
         builder.Entity<ApplicationUser>(entity =>
         {
             entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
             entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
-            entity.Property(e => e.IsActive).HasDefaultValue(true);
         });
     }
 }
